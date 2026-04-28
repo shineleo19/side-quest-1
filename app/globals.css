@@ -1,0 +1,119 @@
+@import "tailwindcss";
+
+:root {
+  --background: #ffffff;
+  --foreground: #171717;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0a0a0a;
+    --foreground: #ededed;
+  }
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: Arial, Helvetica, sans-serif;
+  cursor: url('/cursor.png') 2 2, auto;
+}
+
+
+
+/* Ensure buttons, links, and textareas use the custom cursor too! 
+   You can use the same image, or add a 'pixel-pointer.png' for clickable items. */
+a, button, [role="button"], input, select, textarea {
+  cursor: url('/download.png') 2 2, pointer;
+}
+
+body.cursor-clicked a,
+body.cursor-clicked button,
+body.cursor-clicked [role="button"],
+body.cursor-clicked input,
+body.cursor-clicked select,
+body.cursor-clicked textarea {
+  cursor: url('/download.png') 10 2, pointer;
+}
+
+.pattern-cluster {
+  position: absolute;
+  display: grid;
+  grid-template-columns: repeat(2, 96px);
+  grid-template-rows: repeat(2, 96px);
+  gap: 0;
+  opacity: 0.95;
+}
+
+.pattern-cluster-top {
+  top: 12%;
+  left: 12%;
+}
+
+.pattern-cluster-bottom {
+  right: 14%;
+  bottom: 12%;
+}
+
+.pattern-block {
+  width: 96px;
+  height: 96px;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.pattern-black {
+  background: #000;
+}
+
+.pattern-dither {
+  background-color: #fff;
+  background-image: radial-gradient(#000 1.4px, transparent 1.4px);
+  background-size: 6px 6px;
+}
+
+.pattern-grid {
+  background-color: #d9d9d9;
+  background-image:
+    linear-gradient(to right, rgba(0, 0, 0, 0.15) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(0, 0, 0, 0.15) 1px, transparent 1px);
+  background-size: 12px 12px;
+}
+
+.pattern-lime {
+  background-color: #d9d9d9;
+  background-image:
+    radial-gradient(circle at 22% 35%, #b7ef37 0 28%, transparent 30%),
+    radial-gradient(circle at 70% 66%, #b7ef37 0 22%, transparent 24%),
+    linear-gradient(to right, rgba(0, 0, 0, 0.15) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(0, 0, 0, 0.15) 1px, transparent 1px);
+  background-size: auto, auto, 12px 12px, 12px 12px;
+}
+
+@media (max-width: 900px) {
+  .pattern-cluster {
+    grid-template-columns: repeat(2, 72px);
+    grid-template-rows: repeat(2, 72px);
+  }
+
+  .pattern-block {
+    width: 72px;
+    height: 72px;
+  }
+
+  .pattern-cluster-top {
+    top: 14%;
+    left: 4%;
+  }
+
+  .pattern-cluster-bottom {
+    right: 4%;
+    bottom: 8%;
+  }
+}
