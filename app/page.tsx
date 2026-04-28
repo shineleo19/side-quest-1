@@ -44,6 +44,7 @@ export default function CTFLightPosterGenerator() {
   const [imageUrlInput, setImageUrlInput] = useState("");
   const [imageUrlError, setImageUrlError] = useState("");
   const [isUrlLoading, setIsUrlLoading] = useState(false);
+  const [downloadError, setDownloadError] = useState("");
   const [designerName, setDesignerName] = useState("");
   const [copyStatus, setCopyStatus] = useState("Copy (C)");
   const [theme, setTheme] = useState("PIXEL_ART");
@@ -149,34 +150,36 @@ export default function CTFLightPosterGenerator() {
 
     setIsUrlLoading(true);
 
-    try {
-      // 1. Route the image through a CORS proxy (allorigins is reliable and free)
-      const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(trimmedUrl)}`;
-      
-      // 2. Fetch the image data
-      const response = await fetch(proxyUrl);
-      if (!response.ok) throw new Error("Network response was not ok");
-      
-      // 3. Convert the response to a Blob
-      const blob = await response.blob();
-      
-      // 4. Convert the Blob to a Base64 string
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        const base64data = reader.result as string;
-        // 5. Set the Base64 string as the image source. 
-        // This completely bypasses the html2canvas CORS issue!
-        setPosterImg(base64data);
-        setIsGenerating(false);
-        setIsUrlLoading(false);
-        setImageUrlError("");
-      };
-      reader.readAsDataURL(blob);
+    const blobToDataUrl = (blob: Blob) =>
+      new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result as string);
+        reader.onerror = () => reject(new Error("Failed to read image data"));
+        reader.readAsDataURL(blob);
+      });
 
+    try {
+      const localProxyUrl = `/api/image-proxy?url=${encodeURIComponent(trimmedUrl)}`;
+      const response = await fetch(localProxyUrl);
+      if (!response.ok) {
+        throw new Error(`Proxy request failed (${response.status})`);
+      }
+
+      const blob = await response.blob();
+      const contentType = blob.type || "";
+      if (!contentType.startsWith("image/")) {
+        throw new Error("URL did not return an image");
+      }
+
+      const base64data = await blobToDataUrl(blob);
+      setPosterImg(base64data);
+      setIsGenerating(false);
+      setIsUrlLoading(false);
+      setImageUrlError("");
     } catch (error) {
       console.error("Error loading image:", error);
       setIsUrlLoading(false);
-      setImageUrlError("Could not load image. The server might be blocking access.");
+      setImageUrlError("Could not load image from URL. Try another direct file URL or upload a local image.");
     }
   };
 
@@ -201,63 +204,132 @@ export default function CTFLightPosterGenerator() {
   };
 
   const handleCopy = useCallback(async () => {
-    const copyValue = posterImg || prompt;
-    if (!copyValue.trim()) return;
-
     try {
-      await navigator.clipboard.writeText(copyValue);
-      setCopyStatus("Copied");
-      window.setTimeout(() => setCopyStatus("Copy (C)"), 1200);
+      if (!posterRef.current) {
+        setCopyStatus("Failed");
+        window.setTimeout(() => setCopyStatus("Copy (C)"), 1200);
+        return;
+      }
+
+      if (!navigator.clipboard?.write || typeof ClipboardItem === "undefined") {
+        setCopyStatus("Unsupported");
+        window.setTimeout(() => setCopyStatus("Copy (C)"), 1600);
+        return;
+      }
+
+      const waitForPosterAssets = async (element: HTMLElement) => {
+        const imageNodes = Array.from(element.querySelectorAll("img"));
+        await Promise.all(
+          imageNodes.map(
+            (img) =>
+              new Promise<void>((resolve) => {
+                if (img.complete && img.naturalWidth > 0) {
+                  resolve();
+                  return;
+                }
+
+                const done = () => {
+                  img.removeEventListener("load", done);
+                  img.removeEventListener("error", done);
+                  resolve();
+                };
+
+                img.addEventListener("load", done, { once: true });
+                img.addEventListener("error", done, { once: true });
+              }),
+          ),
+        );
+
+        if (typeof document !== "undefined" && "fonts" in document) {
+          await document.fonts.ready;
+        }
+      };
+
+      const element = posterRef.current;
+      await waitForPosterAssets(element);
+
+      const { toBlob } = await import("html-to-image");
+      const blob = await toBlob(element, {
+        cacheBust: true,
+        pixelRatio: Math.min(window.devicePixelRatio || 1, 2),
+        backgroundColor: "#ffffff",
+      });
+
+      if (!blob) {
+        throw new Error("Unable to render poster blob");
+      }
+
+      await navigator.clipboard.write([
+        new ClipboardItem({
+          "image/png": blob,
+        }),
+      ]);
+
+      setCopyStatus("Copied PNG");
+      window.setTimeout(() => setCopyStatus("Copy (C)"), 1400);
     } catch {
       setCopyStatus("Failed");
       window.setTimeout(() => setCopyStatus("Copy (C)"), 1200);
     }
-  }, [posterImg, prompt]);
+  }, []);
 
   const handleDownload = useCallback(async (e?: React.MouseEvent | KeyboardEvent) => {
     if (e) e.preventDefault();
 
-    if (posterImg && posterRef.current) {
-      try {
-        const html2canvasModule = await import("html2canvas");
-        const html2canvas = html2canvasModule.default;
+    if (!posterRef.current) return;
 
-        // Ensure the element is visible before capturing
-        const element = posterRef.current;
-        
-        const canvas = await html2canvas(element, {
-          scale: 2, // 2x resolution for better quality
-          backgroundColor: "#ffffff",
-          useCORS: true, 
-          allowTaint: false, 
-          logging: false,
-        });
-        
-        const dataUrl = canvas.toDataURL("image/png");
-        const link = document.createElement("a");
-        link.href = dataUrl;
-        link.download = `poster-${designerName || "CTF"}-${posterId}.png`;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-      } catch (err) {
-        console.error("Failed to generate poster image:", err);
-        alert("Failed to download poster. Please try uploading the image directly instead of using a URL.");
-      }
-      return;
+    try {
+      setDownloadError("");
+
+      const waitForPosterAssets = async (element: HTMLElement) => {
+        const imageNodes = Array.from(element.querySelectorAll("img"));
+        await Promise.all(
+          imageNodes.map(
+            (img) =>
+              new Promise<void>((resolve) => {
+                if (img.complete && img.naturalWidth > 0) {
+                  resolve();
+                  return;
+                }
+
+                const done = () => {
+                  img.removeEventListener("load", done);
+                  img.removeEventListener("error", done);
+                  resolve();
+                };
+
+                img.addEventListener("load", done, { once: true });
+                img.addEventListener("error", done, { once: true });
+              }),
+          ),
+        );
+
+        if (typeof document !== "undefined" && "fonts" in document) {
+          await document.fonts.ready;
+        }
+      };
+
+      await waitForPosterAssets(posterRef.current);
+
+      const element = posterRef.current;
+      const { toPng } = await import("html-to-image");
+      const dataUrl = await toPng(element, {
+        cacheBust: true,
+        pixelRatio: Math.min(window.devicePixelRatio || 1, 2),
+        backgroundColor: "#ffffff",
+      });
+
+      const link = document.createElement("a");
+      link.href = dataUrl;
+      link.download = `poster-${designerName || "CTF"}-${posterId}.png`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } catch (err) {
+      console.error("Failed to generate poster image:", err);
+      setDownloadError("Download failed. Wait for the image preview to fully render, then try again.");
     }
-
-    if (!prompt.trim()) return;
-    const blob = new Blob([prompt], { type: "text/plain;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `poster-prompt-${posterId}.txt`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-  }, [posterId, posterImg, prompt, designerName]);
+  }, [posterId, designerName]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -489,6 +561,7 @@ export default function CTFLightPosterGenerator() {
               {copyStatus}
             </button>
           </div>
+          {downloadError ? <p className="mt-2 text-xs text-red-600">{downloadError}</p> : null}
         </div>
       </aside>
 
