@@ -2,6 +2,8 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
 
 ## Getting Started
 
+To enable AI poster generation, set `GEMINI_API_KEY`. You can optionally override the model with `GEMINI_MODEL`.
+
 First, run the development server:
 
 ```bash

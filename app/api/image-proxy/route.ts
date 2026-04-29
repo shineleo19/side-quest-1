@@ -20,6 +20,8 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Only http(s) URLs are supported" }, { status: 400 });
   }
 
+  // No API key required for image proxy; public proxy behavior retained.
+
   try {
     const response = await fetch(parsedUrl.toString(), {
       redirect: "follow",

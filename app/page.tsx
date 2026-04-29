@@ -45,6 +45,7 @@ export default function CTFLightPosterGenerator() {
   const [imageUrlError, setImageUrlError] = useState("");
   const [isUrlLoading, setIsUrlLoading] = useState(false);
   const [downloadError, setDownloadError] = useState("");
+  const [generationError, setGenerationError] = useState("");
   const [designerName, setDesignerName] = useState("");
   const [copyStatus, setCopyStatus] = useState("Copy (C)");
   const [theme, setTheme] = useState("PIXEL_ART");
@@ -98,13 +99,48 @@ export default function CTFLightPosterGenerator() {
     };
   }, []);
 
-  const handleExecute = () => {
-    if (!prompt.trim()) return;
+  const handleExecute = async () => {
+    const trimmedPrompt = prompt.trim();
+
+    if (!trimmedPrompt) {
+      setGenerationError("Enter a prompt before generating a poster.");
+      return;
+    }
+
+    setGenerationError("");
+    setDownloadError("");
     setIsGenerating(true);
-    setTimeout(() => {
+
+    try {
+      const response = await fetch("/api/generate-poster", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          prompt: trimmedPrompt,
+          theme,
+          designerName,
+        }),
+      });
+
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(payload?.error || `Generation failed (${response.status})`);
+      }
+
+      const payload = (await response.json()) as { imageDataUrl?: string };
+      if (!payload.imageDataUrl) {
+        throw new Error("Gemini did not return an image");
+      }
+
+      setPosterImg(payload.imageDataUrl);
+    } catch (error) {
+      console.error("Error generating poster:", error);
+      setGenerationError(error instanceof Error ? error.message : "Could not generate poster.");
+    } finally {
       setIsGenerating(false);
-      // setPosterImg("YOUR_API_IMAGE_URL");
-    }, 2000);
+    }
   };
 
   const handleClear = () => {
@@ -115,6 +151,7 @@ export default function CTFLightPosterGenerator() {
     setPrompt("");
     setImageUrlInput("");
     setImageUrlError("");
+    setGenerationError("");
     setIsUrlLoading(false);
     setPosterImg("");
   };
@@ -537,6 +574,7 @@ export default function CTFLightPosterGenerator() {
               {isGenerating ? "Processing..." : "→ Generate"}
             </button>
           </div>
+          {generationError ? <p className="mt-2 text-xs text-red-600">{generationError}</p> : null}
           <input
             ref={fileInputRef}
             type="file"
@@ -601,7 +639,7 @@ export default function CTFLightPosterGenerator() {
                 <img 
                   src={posterImg} 
                   alt="Generated Poster" 
-                  className="h-full w-full object-cover" 
+                  className="h-full w-full object-contain" 
                 />
              ) : (
                 <div className="text-gray-400 text-xs text-center border border-dashed border-gray-300 w-full h-full flex items-center justify-center bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0IiBoZWlnaHQ9IjQiPgo8cmVjdCB3aWR0aD0iNCIgaGVpZ2h0PSI0IiBmaWxsPSIjZmZmIiAvPgo8cmVjdCB3aWR0aD0iMSIgaGVpZ2h0PSIxIiBmaWxsPSIjZWVlIiAvPgo8L3N2Zz4=')]">
